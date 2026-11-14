@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Opportunities</title>
+<style>
+  body { font-family: Arial; padding: 20px; max-width: 1100px; margin: auto; }
+  input, select { padding: 7px; margin: 4px 4px 4px 0; }
+  button { padding: 7px 12px; cursor: pointer; margin: 2px; }
+  table { border-collapse: collapse; width: 100%; margin-top: 15px; }
+  th, td { border: 1px solid #ccc; padding: 8px; text-align: left; font-size: 14px; }
+  th { background: #f0f0f0; }
+  .err { color: #b00020; margin: 6px 0; }
+  label { font-size: 12px; display: block; }
+  .f { display: inline-block; }
+</style>
+</head>
+<body>
+<a href="/dashboard">&larr; Dashboard</a> | <a href="/customers">Customers</a>
+<h2>Opportunities</h2>
+
+<form id="form" novalidate>
+  <div class="f"><label>Name *</label><input id="opportunityName" maxlength="150" /></div>
+  <div class="f"><label>Customer *</label><select id="customerId"></select></div>
+  <div class="f"><label>Stage</label>
+    <select id="stage">
+      <option>Qualification</option><option>Proposal</option><option>Negotiation</option><option>Won</option><option>Lost</option>
+    </select></div>
+  <div class="f"><label>Amount *</label><input id="amount" type="number" step="0.01" /></div>
+  <div class="f"><label>Probability % *</label><input id="probability" type="number" /></div>
+  <div class="f"><label>Expected Close Date *</label><input id="expectedCloseDate" type="date" /></div>
+  <div class="err" id="errors"></div>
+  <button type="submit" id="saveBtn">Add Opportunity</button>
+  <button type="button" id="cancelBtn" style="display:none" onclick="resetForm()">Cancel</button>
+</form>
+
+<hr />
+<input id="search" placeholder="Search by name" />
+<select id="fStage"><option value="">All stages</option>
+  <option>Qualification</option><option>Proposal</option><option>Negotiation</option><option>Won</option><option>Lost</option></select>
+<button onclick="load(1)">Search</button>
+
+<table>
+  <thead><tr><th>Name</th><th>Customer</th><th>Stage</th><th>Amount</th><th>Prob %</th><th>Weighted</th><th>Close Date</th><th>Status</th><th>Actions</th></tr></thead>
+  <tbody id="rows"></tbody>
+</table>
+<div style="margin-top:10px">
+  <button onclick="load(page-1)">Prev</button> <span id="pageInfo"></span> <button onclick="load(page+1)">Next</button>
+</div>
+
+<script>
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
+    ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+  const fields = ['opportunityName', 'customerId', 'stage', 'amount', 'probability', 'expectedCloseDate'];
+  let items = [], editingId = null, page = 1, pages = 1, role = '';
+
+  const showErrors = list => $('errors').innerHTML = list.map(e => `<div>${esc(e)}</div>`).join('');
+  const todayStr = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+
+  // CLIENT-SIDE VALIDATION
+  function clientValidate(d) {
+    const e = [];
+    if (!d.opportunityName) e.push('Opportunity Name is required.');
+    if (!d.customerId) e.push('Customer is required.');
+    const active = d.stage !== 'Won' && d.stage !== 'Lost';
+    if (d.amount === '' || isNaN(Number(d.amount))) e.push('Opportunity Amount is required.');
+    else if (Number(d.amount) < 0) e.push('Opportunity Amount cannot be negative.');
+    else if (active && Number(d.amount) <= 0) e.push('Opportunity Amount must be greater than 0.');
+    const p = Number(d.probability);
+    if (d.probability === '' || isNaN(p) || p < 0 || p > 100) e.push('Probability must be between 0 and 100.');
+    if (!d.expectedCloseDate) e.push('Expected Close Date is required.');
+    else if (active && d.expectedCloseDate < todayStr()) e.push('Expected Close Date cannot be in the past.');
+    return e;
+  }
+
+  async function loadCustomers() {
+    const res = await fetch('/api/customers?limit=50');
+    const out = await res.json();
+    $('customerId').innerHTML = '<option value="">-- select customer --</option>' +
+      out.data.map(c => `<option value="${c._id}">${esc(c.customerName)}</option>`).join('');
+  }
+
+  async function load(p) {
+    if (p < 1 || p > Math.max(pages, 1)) return;
+    page = p;
+    const q = encodeURIComponent($('search').value.trim());
+    const res = await fetch(`/api/opportunities?q=${q}&stage=${$('fStage').value}&page=${page}&limit=5`);
+    if (res.status === 401) return (location.href = '/login.html');
+    const out = await res.json();
+    items = out.data; pages = out.pages || 1;
+    $('rows').innerHTML = items.map(o => `
+      <tr>
+        <td>${esc(o.opportunityName)}</td>
+        <td>${esc(o.customerId && o.customerId.customerName)}</td>
+        <td>${esc(o.stage)}</td>
+        <td>${o.amount}</td><td>${o.probability}</td>
+        <td>${(o.amount * o.probability / 100).toFixed(2)}</td>
+        <td>${esc(o.expectedCloseDate.slice(0, 10))}</td>
+        <td>${esc(o.status)}</td>
+        <td>
+          <button onclick="editItem('${o._id}')">Edit</button>
+          ${role !== 'SalesExecutive' ? `<button onclick="del('${o._id}')">Delete</button>` : ''}
+        </td>
+      </tr>`).join('') || '<tr><td colspan="9">No opportunities found.</td></tr>';
+    $('pageInfo').textContent = `Page ${page} of ${pages} (${out.total} total)`;
+  }
+
+  function editItem(id) {
+    const o = items.find(x => x._id === id);
+    $('opportunityName').value = o.opportunityName;
+    $('customerId').value = o.customerId ? o.customerId._id : '';
+    $('stage').value = o.stage;
+    $('amount').value = o.amount;
+    $('probability').value = o.probability;
+    $('expectedCloseDate').value = o.expectedCloseDate.slice(0, 10);
+    editingId = id;
+    $('saveBtn').textContent = 'Update Opportunity';
+    $('cancelBtn').style.display = 'inline';
+    showErrors([]);
+  }
+
+  function resetForm() {
+    $('form').reset(); editingId = null;
+    $('saveBtn').textContent = 'Add Opportunity';
+    $('cancelBtn').style.display = 'none';
+    showErrors([]);
+  }
+
+  $('form').onsubmit = async e => {
+    e.preventDefault();
+    const d = {};
+    fields.forEach(f => d[f] = $(f).value.trim());
+    const errs = clientValidate(d);
+    if (errs.length) return showErrors(errs);
+    const res = await fetch(editingId ? `/api/opportunities/${editingId}` : '/api/opportunities', {
+      method: editingId ? 'PUT' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(d)
+    });
+    const out = await res.json();
+    if (!res.ok) return showErrors(out.errors || ['Error']);
+    resetForm(); load(page);
+  };
+
+  async function del(id) {
+    if (!confirm('Delete this opportunity?')) return;
+    const res = await fetch(`/api/opportunities/${id}`, { method: 'DELETE' });
+    if (!res.ok) alert((await res.json()).errors?.[0] || 'Could not delete.');
+    load(page);
+  }
+
+  fetch('/api/auth/me').then(r => r.ok ? r.json() : (location.href = '/login.html'))
+    .then(u => { role = u.role; loadCustomers(); load(1); });
+</script>
+</body>
+</html>
