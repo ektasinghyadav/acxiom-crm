@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Customers</title>
+<style>
+  body { font-family: Arial; padding: 20px; max-width: 1000px; margin: auto; }
+  input, select { padding: 7px; margin: 4px 4px 4px 0; }
+  button { padding: 7px 12px; cursor: pointer; margin: 2px; }
+  table { border-collapse: collapse; width: 100%; margin-top: 15px; }
+  th, td { border: 1px solid #ccc; padding: 8px; text-align: left; font-size: 14px; }
+  th { background: #f0f0f0; }
+  .err { color: #b00020; margin: 6px 0; }
+  .err div { margin: 2px 0; }
+</style>
+</head>
+<body>
+<a href="/dashboard">&larr; Dashboard</a>
+<h2>Customers</h2>
+
+<form id="form" novalidate>
+  <input id="customerName" placeholder="Customer Name *" maxlength="100" />
+  <input id="email" placeholder="Email *" />
+  <input id="phone" placeholder="Phone (10 digits) *" maxlength="10" />
+  <input id="companyName" placeholder="Company" maxlength="100" />
+  <input id="address" placeholder="Address" maxlength="300" />
+  <input id="city" placeholder="City" />
+  <input id="state" placeholder="State" />
+  <select id="status"><option>Active</option><option>Inactive</option></select>
+  <div class="err" id="errors"></div>
+  <button type="submit" id="saveBtn">Add Customer</button>
+  <button type="button" id="cancelBtn" style="display:none" onclick="resetForm()">Cancel</button>
+</form>
+
+<hr />
+<input id="search" placeholder="Search name, email, phone, company" size="40" />
+<button onclick="load(1)">Search</button>
+<button onclick="$('search').value=''; load(1)">Clear</button>
+
+<table>
+  <thead>
+    <tr><th>Code</th><th>Name</th><th>Email</th><th>Phone</th><th>Company</th><th>City</th><th>Status</th><th>Actions</th></tr>
+  </thead>
+  <tbody id="rows"></tbody>
+</table>
+<div style="margin-top:10px">
+  <button onclick="load(page-1)" id="prevBtn">Prev</button>
+  <span id="pageInfo"></span>
+  <button onclick="load(page+1)" id="nextBtn">Next</button>
+</div>
+
+<script>
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
+    ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+  const fields = ['customerName', 'email', 'phone', 'companyName', 'address', 'city', 'state', 'status'];
+  let customers = [], editingId = null, page = 1, pages = 1, role = '';
+
+  function showErrors(list) { $('errors').innerHTML = list.map(e => `<div>${esc(e)}</div>`).join(''); }
+
+  // CLIENT-SIDE VALIDATION
+  function clientValidate(d) {
+    const errs = [];
+    if (!d.customerName) errs.push('Customer Name is required.');
+    if (!d.email) errs.push('Email is required.');
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.email)) errs.push('Enter a valid email address.');
+    if (!d.phone) errs.push('Phone is required.');
+    else if (!/^[6-9]\d{9}$/.test(d.phone)) errs.push('Enter a valid 10-digit phone number.');
+    return errs;
+  }
+
+  async function load(p) {
+    if (p < 1 || p > Math.max(pages, 1)) return;
+    page = p;
+    const q = encodeURIComponent($('search').value.trim());
+    const res = await fetch(`/api/customers?q=${q}&page=${page}&limit=5`);
+    if (res.status === 401) return (location.href = '/login.html');
+    const out = await res.json();
+    customers = out.data;
+    pages = out.pages || 1;
+    $('rows').innerHTML = customers.map(c => `
+      <tr>
+        <td>${esc(c.customerCode)}</td><td>${esc(c.customerName)}</td><td>${esc(c.email)}</td>
+        <td>${esc(c.phone)}</td><td>${esc(c.companyName)}</td><td>${esc(c.city)}</td><td>${esc(c.status)}</td>
+        <td>
+          <button onclick="editCustomer('${c._id}')">Edit</button>
+          ${role !== 'SalesExecutive' ? `<button onclick="deleteCustomer('${c._id}')">Delete</button>` : ''}
+        </td>
+      </tr>`).join('') || '<tr><td colspan="8">No customers found.</td></tr>';
+    $('pageInfo').textContent = `Page ${page} of ${pages} (${out.total} total)`;
+  }
+
+  function editCustomer(id) {
+    const c = customers.find(x => x._id === id);
+    fields.forEach(f => $(f).value = c[f] || '');
+    editingId = id;
+    $('saveBtn').textContent = 'Update Customer';
+    $('cancelBtn').style.display = 'inline';
+    showErrors([]);
+  }
+
+  function resetForm() {
+    $('form').reset();
+    editingId = null;
+    $('saveBtn').textContent = 'Add Customer';
+    $('cancelBtn').style.display = 'none';
+    showErrors([]);
+  }
+
+  $('form').onsubmit = async e => {
+    e.preventDefault();
+    const d = {};
+    fields.forEach(f => d[f] = $(f).value.trim());
+    const errs = clientValidate(d);
+    if (errs.length) return showErrors(errs);
+
+    const res = await fetch(editingId ? `/api/customers/${editingId}` : '/api/customers', {
+      method: editingId ? 'PUT' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(d)
+    });
+    const out = await res.json();
+    if (!res.ok) return showErrors(out.errors || [out.message || 'Error']);
+    resetForm();
+    load(page);
+  };
+
+  async function deleteCustomer(id) {
+    if (!confirm('Delete this customer?')) return;
+    const res = await fetch(`/api/customers/${id}`, { method: 'DELETE' });
+    if (!res.ok) alert((await res.json()).errors?.[0] || 'Could not delete.');
+    load(page);
+  }
+
+  fetch('/api/auth/me').then(r => r.ok ? r.json() : (location.href = '/login.html'))
+    .then(u => { role = u.role; load(1); });
+</script>
+</body>
+</html>

@@ -11,6 +11,10 @@ app.use(cookieParser());
 app.use(express.static('public'));
 
 app.use('/api/auth', require('./routes/auth'));
+app.use('/api/customers', require('./routes/customers'));
+
+app.get('/customers', requirePage, (req, res) =>
+  res.sendFile(path.join(__dirname, 'views', 'customers.html')));
 
 // protected page
 app.get('/dashboard', requirePage, (req, res) =>
@@ -19,6 +23,11 @@ app.get('/dashboard', requirePage, (req, res) =>
 // test route: only Admin can open it
 app.get('/api/admin-test', requireAuth, requireRole('Admin'), (req, res) =>
   res.json({ message: 'Hello Admin' }));
+
+app.use((err, req, res, next) => {
+  console.error(err);
+  res.status(500).json({ errors: ['Something went wrong.'] });
+});
 
 mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/acxiomcrm')
   .then(() => app.listen(3000, () => console.log('Running on http://localhost:3000')))
