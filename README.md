@@ -3,7 +3,7 @@
 A role-based CRM web application built with **Node.js, Express and MongoDB** for the Acxiom Consulting technical round. It covers authentication, role-based authorization, customers, leads, opportunities, validation and audit logging.
 
 **Live demo:** <https://acxiom-crm-0kcj.onrender.com/login.html>
-**Built by:** <Ekta Singh Yadav>
+**Built by:** Ekta Singh Yadav
 
 ## Tech stack
 
