@@ -37,6 +37,8 @@ app.use((err, req, res, next) => {
   res.status(500).json({ errors: ['Something went wrong.'] });
 });
 
+
+
 mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/acxiomcrm')
-  .then(() => app.listen(3000, () => console.log('Running on http://localhost:3000')))
-  .catch(err => console.error('DB connection failed:', err.message));
+.then(() => app.listen(process.env.PORT || 3000, () => console.log('Server running')))
+.catch(err => console.error('DB connection failed:', err.message));
