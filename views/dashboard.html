@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html><head><title>Dashboard</title></head>
+<body style="font-family:Arial;padding:20px">
+<h2>AcxiomCRM Dashboard</h2>
+<p id="who"></p>
+<button onclick="logout()">Logout</button>
+<script>
+fetch('/api/auth/me').then(r => r.ok ? r.json() : location.href='/login.html')
+  .then(u => who.textContent = `Logged in as ${u.name} (${u.role})`);
+async function logout() {
+  await fetch('/api/auth/logout', { method:'POST' });
+  location.href = '/login.html';
+}
+</script>
+</body></html>

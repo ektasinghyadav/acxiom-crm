@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html><head><title>AcxiomCRM Login</title>
+<style>
+  body{font-family:Arial;max-width:380px;margin:60px auto}
+  input,button{display:block;width:100%;margin:8px 0;padding:8px;box-sizing:border-box}
+  .msg{color:#b00020;min-height:20px}
+</style></head>
+<body>
+<h2>AcxiomCRM</h2>
+<h3>Login</h3>
+<input id="lemail" type="email" placeholder="Email" />
+<input id="lpass" type="password" placeholder="Password" />
+<button onclick="login()">Login</button>
+
+<h3>Register</h3>
+<input id="rname" placeholder="Name" />
+<input id="remail" type="email" placeholder="Email" />
+<input id="rpass" type="password" placeholder="Password" />
+<button onclick="register()">Register</button>
+<div class="msg" id="msg"></div>
+
+<script>
+const show = t => document.getElementById('msg').textContent = t;
+const post = (url, body) => fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+
+async function login() {
+  const res = await post('/api/auth/login', { email: lemail.value, password: lpass.value });
+  const data = await res.json();
+  if (res.ok) location.href = '/dashboard'; else show(data.message);
+}
+async function register() {
+  const res = await post('/api/auth/register', { name: rname.value, email: remail.value, password: rpass.value });
+  show((await res.json()).message);
+}
+</script>
+</body></html>

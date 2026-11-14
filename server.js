@@ -1,0 +1,25 @@
+require('dotenv').config();
+const express = require('express');
+const mongoose = require('mongoose');
+const cookieParser = require('cookie-parser');
+const path = require('path');
+const { requireAuth, requireRole, requirePage } = require('./middleware/auth');
+
+const app = express();
+app.use(express.json());
+app.use(cookieParser());
+app.use(express.static('public'));
+
+app.use('/api/auth', require('./routes/auth'));
+
+// protected page
+app.get('/dashboard', requirePage, (req, res) =>
+  res.sendFile(path.join(__dirname, 'views', 'dashboard.html')));
+
+// test route: only Admin can open it
+app.get('/api/admin-test', requireAuth, requireRole('Admin'), (req, res) =>
+  res.json({ message: 'Hello Admin' }));
+
+mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/acxiomcrm')
+  .then(() => app.listen(3000, () => console.log('Running on http://localhost:3000')))
+  .catch(err => console.error('DB connection failed:', err.message));
