@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Leads</title>
+<style>
+  body { font-family: Arial; padding: 20px; max-width: 1100px; margin: auto; }
+  input, select { padding: 7px; margin: 4px 4px 4px 0; }
+  button { padding: 7px 12px; cursor: pointer; margin: 2px; }
+  table { border-collapse: collapse; width: 100%; margin-top: 15px; }
+  th, td { border: 1px solid #ccc; padding: 8px; text-align: left; font-size: 14px; }
+  th { background: #f0f0f0; }
+  .err { color: #b00020; margin: 6px 0; }
+  .ok { color: #0a7a2f; margin: 6px 0; }
+</style>
+</head>
+<body>
+<a href="/dashboard">&larr; Dashboard</a> | <a href="/customers">Customers</a> | <a href="/opportunities">Opportunities</a>
+<h2>Leads</h2>
+
+<form id="form" novalidate>
+  <input id="leadName" placeholder="Lead Name *" maxlength="100" />
+  <input id="email" placeholder="Email *" />
+  <input id="phone" placeholder="Phone (10 digits) *" maxlength="10" />
+  <input id="companyName" placeholder="Company" maxlength="100" />
+  <select id="source">
+    <option>Website</option><option>Referral</option><option>Cold Call</option><option>Email Campaign</option><option>Event</option><option>Other</option>
+  </select>
+  <input id="expectedValue" type="number" placeholder="Expected Value" />
+  <select id="status" style="display:none">
+    <option>New</option><option>Contacted</option><option>Qualified</option><option>Unqualified</option><option>Lost</option>
+  </select>
+  <div class="err" id="errors"></div>
+  <button type="submit" id="saveBtn">Add Lead</button>
+  <button type="button" id="cancelBtn" style="display:none" onclick="resetForm()">Cancel</button>
+</form>
+
+<hr />
+<input id="search" placeholder="Search name, company, email" size="35" />
+<select id="fStatus"><option value="">All statuses</option>
+  <option>New</option><option>Contacted</option><option>Qualified</option><option>Unqualified</option><option>Converted</option><option>Lost</option></select>
+<button onclick="load(1)">Search</button>
+<div class="ok" id="okMsg"></div>
+
+<table>
+  <thead><tr><th>Code</th><th>Name</th><th>Email</th><th>Phone</th><th>Company</th><th>Source</th><th>Value</th><th>Status</th><th>Actions</th></tr></thead>
+  <tbody id="rows"></tbody>
+</table>
+<div style="margin-top:10px">
+  <button onclick="load(page-1)">Prev</button> <span id="pageInfo"></span> <button onclick="load(page+1)">Next</button>
+</div>
+
+<script>
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
+    ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+  const fields = ['leadName', 'email', 'phone', 'companyName', 'source', 'expectedValue', 'status'];
+  let items = [], editingId = null, page = 1, pages = 1, role = '';
+  const showErrors = list => $('errors').innerHTML = list.map(e => `<div>${esc(e)}</div>`).join('');
+
+  function clientValidate(d) {
+    const e = [];
+    if (!d.leadName) e.push('Lead Name is required.');
+    if (!d.email) e.push('Email is required.');
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.email)) e.push('Enter a valid email address.');
+    if (!d.phone) e.push('Phone is required.');
+    else if (!/^[6-9]\d{9}$/.test(d.phone)) e.push('Enter a valid 10-digit phone number.');
+    if (d.expectedValue !== '' && (isNaN(Number(d.expectedValue)) || Number(d.expectedValue) < 0)) e.push('Expected Value must be 0 or more.');
+    return e;
+  }
+
+  async function load(p) {
+    if (p < 1 || p > Math.max(pages, 1)) return;
+    page = p;
+    const q = encodeURIComponent($('search').value.trim());
+    const res = await fetch(`/api/leads?q=${q}&status=${$('fStatus').value}&page=${page}&limit=5`);
+    if (res.status === 401) return (location.href = '/login.html');
+    const out = await res.json();
+    items = out.data; pages = out.pages || 1;
+    $('rows').innerHTML = items.map(l => `
+      <tr>
+        <td>${esc(l.leadCode)}</td><td>${esc(l.leadName)}</td><td>${esc(l.email)}</td><td>${esc(l.phone)}</td>
+        <td>${esc(l.companyName)}</td><td>${esc(l.source)}</td><td>${l.expectedValue}</td><td>${esc(l.status)}</td>
+        <td>
+          ${l.status !== 'Converted' ? `<button onclick="editItem('${l._id}')">Edit</button>` : ''}
+          ${l.status === 'Qualified' ? `<button onclick="convertLead('${l._id}')">Convert</button>` : ''}
+          ${role !== 'SalesExecutive' ? `<button onclick="del('${l._id}')">Delete</button>` : ''}
+        </td>
+      </tr>`).join('') || '<tr><td colspan="9">No leads found.</td></tr>';
+    $('pageInfo').textContent = `Page ${page} of ${pages} (${out.total} total)`;
+  }
+
+  function editItem(id) {
+    const l = items.find(x => x._id === id);
+    fields.forEach(f => $(f).value = l[f] == null ? '' : l[f]);
+    $('status').style.display = 'inline';
+    editingId = id;
+    $('saveBtn').textContent = 'Update Lead';
+    $('cancelBtn').style.display = 'inline';
+    showErrors([]);
+  }
+
+  function resetForm() {
+    $('form').reset(); editingId = null;
+    $('status').style.display = 'none';
+    $('saveBtn').textContent = 'Add Lead';
+    $('cancelBtn').style.display = 'none';
+    showErrors([]);
+  }
+
+  $('form').onsubmit = async e => {
+    e.preventDefault();
+    const d = {};
+    fields.forEach(f => d[f] = $(f).value.trim());
+    const errs = clientValidate(d);
+    if (errs.length) return showErrors(errs);
+    const res = await fetch(editingId ? `/api/leads/${editingId}` : '/api/leads', {
+      method: editingId ? 'PUT' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(d)
+    });
+    const out = await res.json();
+    if (!res.ok) return showErrors(out.errors || ['Error']);
+    resetForm(); load(page);
+  };
+
+  async function convertLead(id) {
+    if (!confirm('Convert this lead to a customer and opportunity?')) return;
+    const res = await fetch(`/api/leads/${id}/convert`, { method: 'POST' });
+    const out = await res.json();
+    if (!res.ok) { showErrors(out.errors || ['Error']); return; }
+    showErrors([]);
+    $('okMsg').textContent = out.message;
+    load(page);
+  }
+
+  async function del(id) {
+    if (!confirm('Delete this lead?')) return;
+    const res = await fetch(`/api/leads/${id}`, { method: 'DELETE' });
+    if (!res.ok) alert((await res.json()).errors?.[0] || 'Could not delete.');
+    load(page);
+  }
+
+  fetch('/api/auth/me').then(r => r.ok ? r.json() : (location.href = '/login.html'))
+    .then(u => { role = u.role; load(1); });
+</script>
+</body>
+</html>

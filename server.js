@@ -13,6 +13,10 @@ app.use(express.static('public'));
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/customers', require('./routes/customers'));
 app.use('/api/opportunities', require('./routes/opportunities'));
+app.use('/api/leads', require('./routes/leads'));
+
+app.get('/leads', requirePage, (req, res) =>
+  res.sendFile(path.join(__dirname, 'views', 'leads.html')));
 
 app.get('/opportunities', requirePage, (req, res) =>
   res.sendFile(path.join(__dirname, 'views', 'opportunities.html')));
